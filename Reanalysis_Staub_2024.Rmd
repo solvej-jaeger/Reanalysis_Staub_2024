@@ -1,0 +1,1024 @@
+---
+title: "Reanalysis of Staub's (2024) Experiment 1"
+output:
+  html_document: default
+  pdf_document: default
+date: "2025-02-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, include=FALSE}
+library(plotrix)
+library(Hmisc)
+library(brms)
+library(bayesplot)
+library(dplyr)
+library(ggplot2)
+library(lme4)
+library(lmerTest)
+library(ggpubr)
+```
+
+This is a reanalysis of the data in Staub's (2024) Experiment 1.   
+
+Staub, A. (2024). The function/content word distinction and eye movements in reading. Journal of Experimental Psychology: Learning, Memory, and Cognition, 50(6), 967–984. https://doi.org/10.1037/xlm0001301   
+
+Staub's data and original analysis scripts can be accessed here: https://osf.io/8f5w7
+
+
+## Reading data
+
+Read data file:
+
+```{r}
+# df we will be making changes to
+E1 = read.csv("E1data.csv", header = T)
+
+# df from the original study
+E1_staub = read.csv("E1data.csv", header = T)
+```
+
+Code number of characters in target word and get log of target probability:
+
+```{r}
+E1$target_length = nchar(E1$Target_Word)
+E1$log_target_prob = log10(E1$Target_Prob)
+
+E1_staub$target_length = nchar(E1_staub$Target_Word)
+E1_staub$log_target_prob = log10(E1_staub$Target_Prob)
+```
+
+Factorize subject and item:
+
+```{r}
+E1$subj = as.factor(E1$subj)
+E1$item = as.factor(E1$item)
+
+E1_staub$subj = as.factor(E1_staub$subj)
+E1_staub$item = as.factor(E1_staub$item)
+```
+
+## Recategorizing data
+
+This is Staub's original set of words:
+
+|Lexical (content) words | Grammatical (function) words |
+|------------------------|------------------------------|
+| come                   | about                        |
+| girl                   | before                       |
+| good                   | from                         |
+| know                   | here                         |
+| little                 | never                        |
+| love                   | some                         |
+| make                   | then                         |
+| money                  | these                        |
+| name                   | they                         |
+| night                  | when                         |
+| people                 | where                        |
+| think                  | will                         |
+| time                   | with                         |
+| want                   | would                        |
+
+
+Some of Staub's 'function words' are lexical according to our definition. These are recategorized here:
+
+```{r}
+E1$Class[E1$Target_Word == "about"] <- "Grammatical"
+E1$Class[E1$Target_Word == "before"] <- "Lexical"
+E1$Class[E1$Target_Word == "here"] <- "Lexical"
+E1$Class[E1$Target_Word == "never"] <- "Lexical"
+E1$Class[E1$Target_Word == "then"] <- "Lexical"
+E1$Class[E1$Target_Word == "these"] <- "Lexical"
+E1$Class[E1$Target_Word == "when"] <- "Lexical"
+E1$Class[E1$Target_Word == "where"] <- "Lexical"
+E1$Class[E1$Target_Word == "will"] <- "Grammatical"
+E1$Class[E1$Target_Word == "with"] <- "Grammatical"
+E1$Class[E1$Target_Word == "would"] <- "Grammatical"
+E1$Class[E1$Target_Word == "they"] <- "Lexical"
+
+#the words 'some' and 'from' have both lexical and grammatical variants
+#each stimulus sentence is therefore recategorized separately
+E1$Class <- ifelse(
+  E1$Target_Word == "some" & substr(E1$Sentence, 1, 3) == "He ",
+  "Lexical",
+  E1$Class
+)
+E1$Class <- ifelse(
+  E1$Target_Word == "some" & substr(E1$Sentence, 1, 3) == "It'",
+  "Grammatical",
+  E1$Class
+)
+E1$Class <- ifelse(
+  E1$Target_Word == "some" & substr(E1$Sentence, 1, 3) == "Cou",
+  "Grammatical",
+  E1$Class
+)
+E1$Class <- ifelse(
+  E1$Target_Word == "some" & substr(E1$Sentence, 1, 3) == "Eve",
+  "Lexical",
+  E1$Class
+)
+E1$Class <- ifelse(
+  E1$Target_Word == "some" & substr(E1$Sentence, 1, 3) == "In ",
+  "Grammatical",
+  E1$Class
+)
+E1$Class <- ifelse(
+  E1$Target_Word == "from" & substr(E1$Sentence, 1, 3) == "Thi",
+  "Grammatical",
+  E1$Class
+)
+E1$Class <- ifelse(
+  E1$Target_Word == "from" & substr(E1$Sentence, 1, 3) == "Tha",
+  "Grammatical",
+  E1$Class
+)
+E1$Class <- ifelse(
+  E1$Target_Word == "from" & substr(E1$Sentence, 1, 3) == "Joe",
+  "Lexical",
+  E1$Class
+)
+E1$Class <- ifelse(
+  E1$Target_Word == "from" & substr(E1$Sentence, 1, 3) == "The",
+  "Lexical",
+  E1$Class
+)
+E1$Class <- ifelse(
+  E1$Target_Word == "from" & substr(E1$Sentence, 1, 3) == "Her",
+  "Grammatical",
+  E1$Class
+)
+E1$Class <- ifelse(
+  E1$Target_Word == "from" & substr(E1$Sentence, 1, 3) == "Per",
+  "Grammatical",
+  E1$Class
+)
+
+```
+
+If we keep all the words from the original analysis, our data will be extremely imbalanced. Therefore, we choose to do the analysis only on the words which Staub categorized as 'function words'.
+
+Deleting the rows where Class is not Lexical or Grammatical (this includes all Staub's 'content words' as well as a few sentences where grammatical status of the target word could not be determined):
+
+```{r}
+E1 <- E1[E1$Class %in% c("Grammatical", "Lexical"), ]
+```
+
+The categorization of the target words now looks like this:
+
+|Lexical words | Grammatical words | Words with both a lexical and a grammatical variant |
+|--------------|-------------------|-----------------------------------------------------|
+| here         |   about           |                       some                          |
+| never        |   with            |                       from                          |
+| before       |   will            |                                                     |
+| where        |   would           |                                                     |
+| when         |                   |                                                     |
+| these        |                   |                                                     |
+| then         |                   |                                                     |
+| they         |                   |                                                     |
+
+There is still a higher number of lexical words than grammatical words. But it is not as imbalanced as it would have been if we had kept all of Staub's 'content words' in the analysis.
+
+## Descriptive statistics
+
+### Skipping
+
+Staub's data:
+
+```{r, include=FALSE}
+summary_E1_staub <- E1_staub %>%
+  group_by(subj, Class) %>%
+  summarise(skip_proportion = mean(target_skip))
+
+skipping_plot_staub <- ggbarplot(summary_E1_staub, x = "Class", y = "skip_proportion",
+                                 add = c("mean_se", "jitter"),
+                                 xlab = FALSE, ylab = "skip_proportion",
+                                 title = "skip proportion by word class (original)")
+```
+
+```{r}
+skipping_plot_staub
+```
+
+
+Our recategorization:
+
+```{r, include=FALSE}
+summary_E1 <- E1 %>%
+  group_by(subj, Class) %>%
+  summarise(skip_proportion = mean(target_skip))
+
+skipping_plot <- ggbarplot(summary_E1, x = "Class", y = "skip_proportion",
+                                 add = c("mean_se", "jitter"),
+                                 xlab = FALSE, ylab = "skip_proportion",
+                                 order = c("Lexical", "Grammatical"),
+                                 title = "skip proportion by word class (reanalysis)")
+```
+
+```{r}
+skipping_plot
+```
+
+### First fixation duration
+
+```{r}
+# First make a version without the skipped trials
+E1_rt_staub = E1_staub[E1_staub$target_skip == 0,]
+E1_rt = E1[E1$target_skip == 0,]
+```
+
+
+Staub's data:
+
+```{r, include=FALSE}
+E1_ff_summary_staub <- E1_rt_staub %>%
+  group_by(subj, Class)%>%
+  summarise(mean_ff = mean(ffR3))
+
+ff_plot_staub <- ggbarplot(E1_ff_summary_staub, x = "Class", y = "mean_ff",
+                                 add = c("mean_se", "jitter"),
+                                 xlab = FALSE, ylab = "mean first fixation duration",
+                                 title = "first fixation duration by word class (original)")
+```
+
+```{r}
+ff_plot_staub
+```
+
+
+Our recategorization:
+
+```{r, include=FALSE}
+E1_ff_summary <- E1_rt %>%
+  group_by(subj, Class)%>%
+  summarise(mean_ff = mean(ffR3))
+
+ff_plot <- ggbarplot(E1_ff_summary, x = "Class", y = "mean_ff",
+                           add = c("mean_se", "jitter"),
+                           xlab = FALSE, ylab = "mean first fixation duration",
+                           order = c("Lexical", "Grammatical"),
+                           title = "first fixation duration by word class (reanalysis)")
+```
+
+```{r}
+ff_plot
+```
+
+### Gaze duration
+
+Staub's data:
+
+```{r, include=FALSE}
+E1_fp_summary_staub <- E1_rt_staub %>%
+  group_by(subj, Class)%>%
+  summarise(mean_fp = mean(fpR3))
+
+fp_plot_staub <- ggbarplot(E1_fp_summary_staub, x = "Class", y = "mean_fp",
+                           add = c("mean_se", "jitter"),
+                           xlab = FALSE, ylab = "mean first pass duration",
+                           title = "first pass duration by word class (original)")
+```
+
+```{r}
+fp_plot_staub
+```
+
+Our recategorization:
+
+```{r, include=FALSE}
+E1_fp_summary <- E1_rt %>%
+  group_by(subj, Class)%>%
+  summarise(mean_fp = mean(fpR3))
+
+fp_plot <- ggbarplot(E1_fp_summary, x = "Class", y = "mean_fp",
+                           add = c("mean_se", "jitter"),
+                           xlab = FALSE, ylab = "mean first pass duration",
+                           order = c("Lexical", "Grammatical"),
+                           title = "first pass duration by word class (reanalysis)")
+```
+
+
+```{r}
+fp_plot
+```
+
+
+## Linear Bayesian mixed-effects models
+
+We ran the same analysis on the recategorized data as was used by Staub (2024). Following the same procedure, we used a two-stage modelling approach: A set of eight predictors was included in an initial model, but predictors were removed from the second, final model if there was no evidence for effects of these variables in the initial model.
+
+
+```{r}
+# adding frequency to the data frame (because after the recategorization, frequency is no longer balanced between the two groups)
+E1$target_zipf_freq[E1$Target_Word == "about"] <- 6.56
+E1$target_zipf_freq[E1$Target_Word == "before"] <- 5.9
+E1$target_zipf_freq[E1$Target_Word == "from"] <- 6.31
+E1$target_zipf_freq[E1$Target_Word == "here"] <- 6.66
+E1$target_zipf_freq[E1$Target_Word == "never"] <- 6.13
+E1$target_zipf_freq[E1$Target_Word == "some"] <- 6.24
+E1$target_zipf_freq[E1$Target_Word == "then"] <- 6.17
+E1$target_zipf_freq[E1$Target_Word == "these"] <- 5.96
+E1$target_zipf_freq[E1$Target_Word == "they"] <- 6.61
+E1$target_zipf_freq[E1$Target_Word == "when"] <- 6.31
+E1$target_zipf_freq[E1$Target_Word == "where"] <- 6.26
+E1$target_zipf_freq[E1$Target_Word == "will"] <- 6.33
+E1$target_zipf_freq[E1$Target_Word == "with"] <- 6.7
+E1$target_zipf_freq[E1$Target_Word == "would"] <- 6.25
+```
+
+
+```{r}
+#sum code the binary variables
+
+E1$Preceding_Skip_x = ifelse(E1$preceding_skip == 0, -.5, .5)
+E1$Class.x = ifelse(E1$Class == "Lexical", -.5, .5)
+
+E1_staub$Preceding_Skip_x = ifelse(E1_staub$preceding_skip == 0, -.5, .5)
+E1_staub$Class.x = ifelse(E1_staub$Class == "Content", -.5, .5)
+
+#center the other predictors
+
+E1$Function_Word_Prob.c = E1$Function_Word_Prob - mean(E1$Function_Word_Prob)
+E1$Entropy.c = E1$Entropy - mean(E1$Entropy)
+E1$Position.c = E1$Num_Words_Before - mean(E1$Num_Words_Before)
+E1$Preceding_Length.c = E1$Preceding_Word_Length - mean(E1$Preceding_Word_Length)
+E1$Target_Length.c = E1$target_length - mean(E1$target_length)
+E1$Log_Target_Prob.c = E1$log_target_prob - mean(E1$log_target_prob)
+# I am including frequency here
+E1$Target_zipf_freq.c = E1$target_zipf_freq - mean(E1$target_zipf_freq)
+
+E1_staub$Function_Word_Prob.c = E1_staub$Function_Word_Prob - mean(E1_staub$Function_Word_Prob)
+E1_staub$Entropy.c = E1_staub$Entropy - mean(E1_staub$Entropy)
+E1_staub$Position.c = E1_staub$Num_Words_Before - mean(E1_staub$Num_Words_Before)
+E1_staub$Preceding_Length.c = E1_staub$Preceding_Word_Length - mean(E1_staub$Preceding_Word_Length)
+E1_staub$Target_Length.c = E1_staub$target_length - mean(E1_staub$target_length)
+E1_staub$Log_Target_Prob.c = E1_staub$log_target_prob - mean(E1_staub$log_target_prob)
+
+#make a version without the skipped trials, for analysis of reading time data
+
+E1.noskip = E1[E1$target_skip == 0,]
+
+E1_staub.noskip = E1_staub[E1_staub$target_skip == 0,]
+```
+
+### Skipping
+
+```{r}
+#set prior on the effect of word class
+skip_prior = set_prior("normal(0,0.3)", class = "b", coef = "Class.x")
+```
+
+#### Staub's analysis
+
+This code was copy/pasted directly from Staub's code. That's why the data frame is called E1 (it corresponds to E1_staub here).
+
+Initial model with all predictors:
+
+```{r, eval=FALSE}
+skip.model10 <- brm(target_skip~ Class.x + 
+                      Function_Word_Prob.c + 
+                      Entropy.c +
+                      Position.c +
+                      Preceding_Length.c +
+                      Target_Length.c +
+                      Log_Target_Prob.c + 
+                      Preceding_Skip_x +
+                     (1 + Class.x|subj) + 
+                     (1|item),
+                   prior = skip_prior,
+                   sample_prior = "yes",
+                   cores = 4,
+                   family = bernoulli,
+                   iter = 4000,
+                   data = E1)
+
+summary(skip.model10)
+```
+
+Staub does not give the full summary of the initial model (and running it takes a long time, so we haven't done that). But he reports no hints of effects of function word probability, entropy, or log_target_probability. These are removed from the model.
+
+The second model:
+
+```{r, eval=FALSE}
+skip.model11 <- brm(target_skip~ Class.x + 
+                      Position.c +
+                      Preceding_Length.c +
+                      Target_Length.c +
+                      Preceding_Skip_x +
+                      (1 + Class.x|subj) + 
+                      (1|item),
+                    prior = skip_prior,
+                    sample_prior = "yes",
+                    cores = 4,
+                    family = bernoulli,
+                    iter = 4000,
+                    data = E1)
+
+summary(skip.model11)
+```
+
+Staub reports this summary of the second model:
+
+```{r, eval=FALSE}
+Family: bernoulli 
+Links: mu = logit 
+Formula: target_skip ~ Class.x + Position.c + Preceding_Length.c + Target_Length.c + Preceding_Skip_x + (1 + Class.x | subj) + (1 | item) 
+Data: E1 (Number of observations: 18718) 
+Draws: 4 chains, each with iter = 4000; warmup = 2000; thin = 1;
+total post-warmup draws = 8000
+
+Group-Level Effects: 
+  ~item (Number of levels: 223) 
+              Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)     0.40      0.03     0.34     0.46 1.00     3731     6149
+
+~subj (Number of levels: 88) 
+                       Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)              0.89      0.07     0.75     1.04 1.00     1609     2993
+sd(Class.x)                0.27      0.05     0.16     0.38 1.00     3207     4052
+cor(Intercept,Class.x)     0.03      0.18    -0.33     0.39 1.00    10930     6663
+
+Population-Level Effects: 
+                   Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+Intercept             -0.85      0.10    -1.04    -0.66 1.01      842     1495
+Class.x                0.08      0.07    -0.07     0.22 1.00     5526     5663
+Position.c             0.08      0.01     0.06     0.09 1.00     5668     6700
+Preceding_Length.c    -0.12      0.02    -0.15    -0.09 1.00     5360     6154
+Target_Length.c       -0.51      0.05    -0.61    -0.42 1.00     5294     5848
+Preceding_Skip_x      -2.27      0.05    -2.36    -2.18 1.00    15297     5770
+
+Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
+and Tail_ESS are effective sample size measures, and Rhat is the potential
+scale reduction factor on split chains (at convergence, Rhat = 1).
+```
+
+We can see that while the mean of the posterior distribution for the effect of word class is in the direction of more skipping of function words, the credible interval on this estimate extends on both sides of 0. This means that there is no strong evidence for an effect of word class.
+
+#### Our reanalysis
+
+Initial model with all predictors (frequency included):
+
+```{r, eval=FALSE}
+skip.model10 <- brm(target_skip~ Class.x +
+                      Entropy.c +
+                      Position.c +
+                      Preceding_Length.c +
+                      Target_Length.c +
+                      Log_Target_Prob.c +
+                      Preceding_Skip_x +
+                      Target_zipf_freq.c +
+                     (1 + Class.x|subj) +
+                     (1|item),
+                   prior = skip_prior,
+                   sample_prior = "yes",
+                   cores = 4,
+                   family = bernoulli,
+                   iter = 4000,
+                   data = E1)
+
+summary(skip.model10)
+```
+
+This is the summary of the initial model:
+
+```{r, eval=FALSE}
+> summary(skip.model10)
+Family: bernoulli 
+  Links: mu = logit 
+Formula: target_skip ~ Class.x + Entropy.c + Position.c + Preceding_Length.c + Target_Length.c + Log_Target_Prob.c + Preceding_Skip_x + Target_zipf_freq.c + (1 + Class.x | subj) + (1 | item) 
+   Data: E1 (Number of observations: 8887) 
+  Draws: 4 chains, each with iter = 4000; warmup = 2000; thin = 1;
+         total post-warmup draws = 8000
+
+Multilevel Hyperparameters:
+~item (Number of levels: 106) 
+              Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)     0.41      0.04     0.34     0.51 1.00     3233     4654
+
+~subj (Number of levels: 88) 
+                       Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)              0.89      0.08     0.75     1.05 1.00     1334     2413
+sd(Class.x)                0.16      0.08     0.01     0.32 1.00     1927     1973
+cor(Intercept,Class.x)    -0.54      0.33    -0.98     0.30 1.00     4127     3418
+
+Regression Coefficients:
+                   Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+Intercept             -0.85      0.11    -1.07    -0.64 1.00      904     1928
+Class.x                0.07      0.11    -0.14     0.27 1.00     3034     4832
+Entropy.c              0.01      0.04    -0.07     0.10 1.00     2744     4563
+Position.c             0.09      0.01     0.06     0.11 1.00     2909     4568
+Preceding_Length.c    -0.09      0.02    -0.13    -0.04 1.00     2426     4334
+Target_Length.c       -0.74      0.10    -0.94    -0.55 1.00     2506     4156
+Log_Target_Prob.c      0.04      0.09    -0.14     0.21 1.00     2351     4199
+Preceding_Skip_x      -2.30      0.07    -2.44    -2.16 1.00     8514     5905
+Target_zipf_freq.c    -0.37      0.27    -0.90     0.17 1.00     2447     3866
+
+Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
+and Tail_ESS are effective sample size measures, and Rhat is the potential
+scale reduction factor on split chains (at convergence, Rhat = 1).
+```
+
+There seem to be no hints of an effect of entropy or log target probability.
+These predictors are removed from the model.
+
+The second model now looks like this:
+
+```{r, eval=FALSE}
+skip.model11 <- brm(target_skip~ Class.x + 
+                      Position.c +
+                      Preceding_Length.c +
+                      Target_Length.c +
+                      Preceding_Skip_x +
+                      Target_zipf_freq.c +
+                      (1 + Class.x|subj) + 
+                      (1|item),
+                    prior = skip_prior,
+                    sample_prior = "yes",
+                    cores = 4,
+                    family = bernoulli,
+                    iter = 4000,
+                    data = E1)
+
+summary(skip.model11)
+```
+
+Summary of the second model:
+
+```{r, eval=FALSE}
+> summary(skip.model11)
+ Family: bernoulli 
+  Links: mu = logit 
+Formula: target_skip ~ Class.x + Position.c + Preceding_Length.c + Target_Length.c + Preceding_Skip_x + Target_zipf_freq.c + (1 + Class.x | subj) + (1 | item) 
+   Data: E1 (Number of observations: 8887) 
+  Draws: 4 chains, each with iter = 4000; warmup = 2000; thin = 1;
+         total post-warmup draws = 8000
+
+Multilevel Hyperparameters:
+~item (Number of levels: 106) 
+              Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)     0.41      0.04     0.33     0.49 1.00     3115     5347
+
+~subj (Number of levels: 88) 
+                       Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)              0.89      0.08     0.75     1.05 1.00     2244     3303
+sd(Class.x)                0.16      0.08     0.01     0.33 1.00     2493     2718
+cor(Intercept,Class.x)    -0.54      0.34    -0.98     0.29 1.00     7152     4422
+
+Regression Coefficients:
+                   Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+Intercept             -0.85      0.11    -1.06    -0.63 1.00     1424     2096
+Class.x                0.08      0.10    -0.11     0.27 1.00     5178     5919
+Position.c             0.09      0.01     0.06     0.12 1.00     5179     5597
+Preceding_Length.c    -0.09      0.02    -0.13    -0.04 1.00     5070     5535
+Target_Length.c       -0.75      0.10    -0.94    -0.56 1.00     4421     5177
+Preceding_Skip_x      -2.30      0.07    -2.43    -2.16 1.00    13299     6362
+Target_zipf_freq.c    -0.38      0.26    -0.90     0.14 1.00     4429     4652
+
+Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
+and Tail_ESS are effective sample size measures, and Rhat is the potential
+scale reduction factor on split chains (at convergence, Rhat = 1).
+```
+
+The mean of the posterior distribution for the effect of word class is in the direction of more skipping of grammatical words. But again, the credible interval extends on both sides of 0, so there is no strong evidence for an effect of word class on skipping.
+
+### First fixation duration
+
+#### Staub's analysis
+
+```{r}
+ff_fp_prior = set_prior("normal(0,0.05)", class = "b", coef = "Class.x")
+```
+
+Initial model with all predictors:
+
+```{r, eval=FALSE}
+ff.model10 <- brm(log(ffR3)~ Class.x + 
+                      Function_Word_Prob.c + 
+                      Entropy.c +
+                      Position.c +
+                      Preceding_Length.c +
+                      Target_Length.c +
+                      Log_Target_Prob.c + 
+                      Preceding_Skip_x +
+                      (1 + Class.x|subj) + 
+                      (1|item),
+                    prior = ff_fp_prior,
+                    sample_prior = "yes",
+                    cores = 4,
+                    iter = 4000,
+                    data = E1.noskip)
+
+summary(ff.model10)
+```
+
+Staub does not report the summary of the initial model (and it takes too long to run it), but he writes that four predictors showed no hint of an effect: entropy, number of preceding words, target word length, and preceding word length. 
+
+These were removed from the model:
+
+```{r, eval=FALSE}
+ff.model11 <- brm(log(ffR3)~ Class.x + 
+                    Function_Word_Prob.c + 
+                    Log_Target_Prob.c + 
+                    Preceding_Skip_x +
+                    (1 + Class.x|subj) + 
+                    (1|item),
+                  prior = ff_fp_prior,
+                  sample_prior = "yes",
+                  cores = 4,
+                  iter = 4000,
+                  data = E1.noskip)
+
+summary(ff.model11)
+```
+
+Staub reports the summary of this second model:
+
+```{r, eval=FALSE}
+Family: gaussian 
+Links: mu = identity; sigma = identity 
+Formula: log(ffR3) ~ Class.x + Function_Word_Prob.c + Log_Target_Prob.c + Preceding_Skip_x + (1 + Class.x | subj) + (1 | item) 
+Data: E1.noskip (Number of observations: 11650) 
+Draws: 4 chains, each with iter = 4000; warmup = 2000; thin = 1;
+total post-warmup draws = 8000
+
+Group-Level Effects: 
+  ~item (Number of levels: 223) 
+              Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)     0.05      0.00     0.04     0.06 1.00     3846     5570
+
+~subj (Number of levels: 88) 
+                       Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)              0.12      0.01     0.10     0.14 1.00     1616     3004
+sd(Class.x)                0.03      0.01     0.01     0.05 1.00     1354      936
+cor(Intercept,Class.x)     0.17      0.21    -0.23     0.60 1.00     4813     1897
+
+Population-Level Effects: 
+                     Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+Intercept                5.37      0.01     5.34     5.39 1.00     1136     2206
+Class.x                  0.02      0.01    -0.00     0.04 1.00     6289     6349
+Function_Word_Prob.c     0.04      0.02    -0.01     0.08 1.00     6616     6372
+Log_Target_Prob.c       -0.02      0.01    -0.03    -0.01 1.00     7330     6513
+Preceding_Skip_x         0.06      0.01     0.05     0.07 1.00    13774     6635
+
+Family Specific Parameters: 
+  Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sigma     0.29      0.00     0.29     0.30 1.00    16155     6250
+
+Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
+and Tail_ESS are effective sample size measures, and Rhat is the potential
+scale reduction factor on split chains (at convergence, Rhat = 1).
+```
+
+Staub (2024) writes: "for the critical effect of word class, the effect is in the opposite direction from that predicted by our hypothesis: first fixation durations are longer on function words than content words. But the lower bound of the credible interval for this effect is at 0, and we obtained a BF of 1.19 for the effect of word class, indicating that the data do not provide strong evidence
+either for or against a null effect."
+
+
+#### Our reanalysis
+
+```{r}
+ff_fp_prior = set_prior("normal(0,0.05)", class = "b", coef = "Class.x")
+```
+
+Model with all predictors (excluding function_word_prob):
+
+```{r, eval=FALSE}
+ff.model10 <- brm(log(ffR3)~ Class.x +
+                      Entropy.c +
+                      Position.c +
+                      Preceding_Length.c +
+                      Target_Length.c +
+                      Log_Target_Prob.c +
+                      Preceding_Skip_x +
+                      Target_zipf_freq.c +
+                      (1 + Class.x|subj) +
+                      (1|item),
+                    prior = ff_fp_prior,
+                    sample_prior = "yes",
+                    cores = 4,
+                    iter = 4000,
+                    data = E1.noskip)
+
+summary(ff.model10)
+```
+
+Summary of the initial model:
+
+```{r, eval=FALSE}
+> summary(ff.model10)
+ Family: gaussian 
+  Links: mu = identity; sigma = identity 
+Formula: log(ffR3) ~ Class.x + Entropy.c + Position.c + Preceding_Length.c + Target_Length.c + Log_Target_Prob.c + Preceding_Skip_x + Target_zipf_freq.c + (1 + Class.x | subj) + (1 | item) 
+   Data: E1.noskip (Number of observations: 5333) 
+  Draws: 4 chains, each with iter = 4000; warmup = 2000; thin = 1;
+         total post-warmup draws = 8000
+
+Multilevel Hyperparameters:
+~item (Number of levels: 106) 
+              Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)     0.04      0.01     0.03     0.05 1.00     3160     4075
+
+~subj (Number of levels: 88) 
+                       Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)              0.12      0.01     0.11     0.15 1.00     1715     2985
+sd(Class.x)                0.02      0.01     0.00     0.04 1.00     2809     3893
+cor(Intercept,Class.x)     0.29      0.46    -0.80     0.96 1.00     6999     4163
+
+Regression Coefficients:
+                   Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+Intercept              5.38      0.01     5.35     5.40 1.00     1091     1562
+Class.x               -0.03      0.01    -0.06    -0.00 1.00     4886     5178
+Entropy.c              0.01      0.01    -0.00     0.02 1.00     5062     5729
+Position.c            -0.00      0.00    -0.00     0.00 1.00     5380     6078
+Preceding_Length.c     0.00      0.00    -0.00     0.01 1.00     5643     6225
+Target_Length.c        0.02      0.01     0.00     0.05 1.00     3421     5025
+Log_Target_Prob.c     -0.01      0.01    -0.03     0.02 1.00     4708     4811
+Preceding_Skip_x       0.04      0.01     0.02     0.06 1.00     8048     6033
+Target_zipf_freq.c     0.04      0.03    -0.02     0.11 1.00     3857     4456
+
+Further Distributional Parameters:
+      Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sigma     0.30      0.00     0.29     0.31 1.00    10774     5465
+
+Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
+and Tail_ESS are effective sample size measures, and Rhat is the potential
+scale reduction factor on split chains (at convergence, Rhat = 1).
+```
+
+There is no hint of an effect of entropy, position, preceding_length or log_target_prob.  
+Second model:
+
+```{r, eval=FALSE}
+ff.model11 <- brm(log(ffR3)~ Class.x +
+                    Target_Length.c +
+                    Preceding_Skip_x +
+                    Target_zipf_freq.c +
+                    (1 + Class.x|subj) + 
+                    (1|item),
+                  prior = ff_fp_prior,
+                  sample_prior = "yes",
+                  cores = 4,
+                  iter = 4000,
+                  data = E1.noskip)
+
+summary(ff.model11)
+```
+
+Summary of the second model:
+
+```{r, eval=FALSE}
+> summary(ff.model11)
+ Family: gaussian 
+  Links: mu = identity; sigma = identity 
+Formula: log(ffR3) ~ Class.x + Target_Length.c + Preceding_Skip_x + Target_zipf_freq.c + (1 + Class.x | subj) + (1 | item) 
+   Data: E1.noskip (Number of observations: 5333) 
+  Draws: 4 chains, each with iter = 4000; warmup = 2000; thin = 1;
+         total post-warmup draws = 8000
+
+Multilevel Hyperparameters:
+~item (Number of levels: 106) 
+              Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)     0.04      0.01     0.03     0.05 1.00     3107     4393
+
+~subj (Number of levels: 88) 
+                       Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)              0.12      0.01     0.11     0.15 1.00     1767     2756
+sd(Class.x)                0.01      0.01     0.00     0.04 1.00     2475     3833
+cor(Intercept,Class.x)     0.28      0.46    -0.80     0.96 1.00     8293     4677
+
+Regression Coefficients:
+                   Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+Intercept              5.38      0.01     5.35     5.40 1.00     1244     2738
+Class.x               -0.03      0.01    -0.05    -0.00 1.00     5802     5993
+Target_Length.c        0.02      0.01    -0.00     0.04 1.00     4683     4932
+Preceding_Skip_x       0.03      0.01     0.02     0.05 1.00     9713     6821
+Target_zipf_freq.c     0.03      0.03    -0.04     0.10 1.00     4467     4852
+
+Further Distributional Parameters:
+      Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sigma     0.30      0.00     0.29     0.31 1.00    10817     4872
+
+Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
+and Tail_ESS are effective sample size measures, and Rhat is the potential
+scale reduction factor on split chains (at convergence, Rhat = 1).
+```
+
+Here there is an effect of word class in the expected direction (longer fixations on lexical words) and the credible interval just excludes 0. 
+
+### Gaze duration
+
+#### Staub's analysis
+
+Initial model with all predictors:
+
+```{r, eval=FALSE}
+fp.model10 <- brm(log(fpR3)~ Class.x + 
+                    Function_Word_Prob.c + 
+                    Entropy.c +
+                    Position.c +
+                    Preceding_Length.c +
+                    Target_Length.c +
+                    Log_Target_Prob.c + 
+                    Preceding_Skip_x +
+                    (1 + Class.x|subj) + 
+                    (1|item),
+                  prior = ff_fp_prior,
+                  sample_prior = "yes",
+                  cores = 4,
+                  iter = 4000,
+                  data = E1.noskip)
+
+summary(fp.model10)
+```
+
+Staub does not report the summary of the initial model but writes that the same four predictors were dropped as in the first_fixation analysis: entropy, number of preceding words, target word length, and preceding word length.
+
+The second model then looks like this:
+
+```{r, eval=FALSE}
+fp.model11 <- brm(log(fpR3)~ Class.x + 
+                    Function_Word_Prob.c + 
+                    Log_Target_Prob.c + 
+                    Preceding_Skip_x +
+                    (1 + Class.x|subj) + 
+                    (1|item),
+                  prior = ff_fp_prior,
+                  sample_prior = "yes",
+                  cores = 4,
+                  iter = 4000,
+                  data = E1.noskip)
+
+summary(fp.model11)
+```
+
+Staub reports this summary of the second model:
+
+```{r, eval=FALSE}
+Family: gaussian 
+Links: mu = identity; sigma = identity 
+Formula: log(fpR3) ~ Class.x + Function_Word_Prob.c + Log_Target_Prob.c + Preceding_Skip_x + (1 + Class.x | subj) + (1 | item) 
+Data: E1.noskip (Number of observations: 11650) 
+Draws: 4 chains, each with iter = 4000; warmup = 2000; thin = 1;
+total post-warmup draws = 8000
+
+Group-Level Effects: 
+  ~item (Number of levels: 223) 
+              Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)     0.06      0.00     0.05     0.07 1.00     3255     5047
+
+~subj (Number of levels: 88) 
+                       Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)              0.13      0.01     0.11     0.16 1.01     1161     2014
+sd(Class.x)                0.06      0.01     0.04     0.08 1.00     3353     4233
+cor(Intercept,Class.x)     0.30      0.15     0.01     0.58 1.00     4222     4846
+
+Population-Level Effects: 
+                     Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+Intercept                5.41      0.01     5.38     5.44 1.01      640     1409
+Class.x                  0.02      0.01    -0.00     0.05 1.00     3053     4777
+Function_Word_Prob.c     0.05      0.02    -0.00     0.10 1.00     3646     4586
+Log_Target_Prob.c       -0.03      0.01    -0.04    -0.01 1.00     3741     4550
+Preceding_Skip_x         0.07      0.01     0.06     0.09 1.00     8509     6314
+
+Family Specific Parameters: 
+  Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sigma     0.33      0.00     0.33     0.34 1.00    11744     5938
+
+Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
+and Tail_ESS are effective sample size measures, and Rhat is the potential
+scale reduction factor on split chains (at convergence, Rhat = 1).
+```
+
+Staub (2024): "Again, the effect of word class is in the opposite direction of our initial prediction, with slightly longer gaze durations for function words. The BF for the effect of word class is 0.92, again indicating that the data do not provide evidence either for or against the null hypothesis."
+
+#### Our reanalysis
+
+Initial model with all predictors (excluding function word probability):
+
+```{r, eval=FALSE}
+fp.model10 <- brm(log(fpR3)~ Class.x +
+                    Entropy.c +
+                    Position.c +
+                    Preceding_Length.c +
+                    Target_Length.c +
+                    Log_Target_Prob.c +
+                    Preceding_Skip_x +
+                    Target_zipf_freq.c +
+                    (1 + Class.x|subj) +
+                    (1|item),
+                  prior = ff_fp_prior,
+                  sample_prior = "yes",
+                  cores = 4,
+                  iter = 4000,
+                  data = E1.noskip)
+
+summary(fp.model10)
+```
+
+Summary of the initial model:
+
+```{r, eval=FALSE}
+summary(fp.model10)
+ Family: gaussian 
+  Links: mu = identity; sigma = identity 
+Formula: log(fpR3) ~ Class.x + Entropy.c + Position.c + Preceding_Length.c + Target_Length.c + Log_Target_Prob.c + Preceding_Skip_x + Target_zipf_freq.c + (1 + Class.x | subj) + (1 | item) 
+   Data: E1.noskip (Number of observations: 5333) 
+  Draws: 4 chains, each with iter = 4000; warmup = 2000; thin = 1;
+         total post-warmup draws = 8000
+
+Multilevel Hyperparameters:
+~item (Number of levels: 106) 
+              Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)     0.05      0.01     0.04     0.07 1.00     3308     5095
+
+~subj (Number of levels: 88) 
+                       Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)              0.14      0.01     0.12     0.17 1.00     1552     3430
+sd(Class.x)                0.02      0.01     0.00     0.05 1.00     2208     3756
+cor(Intercept,Class.x)     0.18      0.46    -0.82     0.93 1.00     7976     4075
+
+Regression Coefficients:
+                   Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+Intercept              5.42      0.02     5.39     5.46 1.00     1153     2470
+Class.x               -0.04      0.02    -0.07    -0.01 1.00     4989     5726
+Entropy.c              0.01      0.01    -0.01     0.02 1.00     4825     5802
+Position.c            -0.00      0.00    -0.01     0.00 1.00     5777     5407
+Preceding_Length.c     0.00      0.00    -0.01     0.01 1.00     4547     5651
+Target_Length.c        0.04      0.01     0.01     0.07 1.00     4102     5516
+Log_Target_Prob.c     -0.01      0.01    -0.04     0.01 1.00     4609     5713
+Preceding_Skip_x       0.04      0.01     0.02     0.06 1.00     9633     6373
+Target_zipf_freq.c     0.07      0.04    -0.01     0.15 1.00     4023     5169
+
+Further Distributional Parameters:
+      Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sigma     0.34      0.00     0.33     0.35 1.00    10500     5427
+
+Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
+and Tail_ESS are effective sample size measures, and Rhat is the potential
+scale reduction factor on split chains (at convergence, Rhat = 1).
+```
+
+There is no hint of an effect of entropy, position or preceding_length.
+
+Second model with these predictors removed:
+
+```{r eval=FALSE}
+fp.model11 <- brm(log(fpR3)~ Class.x + 
+                    Target_Length.c +
+                    Log_Target_Prob.c + 
+                    Preceding_Skip_x +
+                    Target_zipf_freq.c +
+                    (1 + Class.x|subj) + 
+                    (1|item),
+                  prior = ff_fp_prior,
+                  sample_prior = "yes",
+                  cores = 4,
+                  iter = 4000,
+                  data = E1.noskip)
+
+summary(fp.model11)
+```
+
+Summary of the second model:
+
+```{r, eval=FALSE}
+> summary(fp.model11)
+ Family: gaussian 
+  Links: mu = identity; sigma = identity 
+Formula: log(fpR3) ~ Class.x + Target_Length.c + Log_Target_Prob.c + Preceding_Skip_x + Target_zipf_freq.c + (1 + Class.x | subj) + (1 | item) 
+   Data: E1.noskip (Number of observations: 5333) 
+  Draws: 4 chains, each with iter = 4000; warmup = 2000; thin = 1;
+         total post-warmup draws = 8000
+
+Multilevel Hyperparameters:
+~item (Number of levels: 106) 
+              Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)     0.05      0.01     0.04     0.07 1.00     3095     4791
+
+~subj (Number of levels: 88) 
+                       Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sd(Intercept)              0.14      0.01     0.12     0.17 1.00     1609     2900
+sd(Class.x)                0.02      0.01     0.00     0.05 1.00     2304     3533
+cor(Intercept,Class.x)     0.18      0.46    -0.84     0.93 1.00     6726     4079
+
+Regression Coefficients:
+                   Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+Intercept              5.42      0.02     5.39     5.46 1.01     1195     2478
+Class.x               -0.04      0.02    -0.07    -0.01 1.00     4897     5197
+Target_Length.c        0.04      0.01     0.01     0.06 1.00     4139     4956
+Log_Target_Prob.c     -0.02      0.01    -0.04     0.01 1.00     4746     5476
+Preceding_Skip_x       0.03      0.01     0.01     0.06 1.00     8620     5792
+Target_zipf_freq.c     0.06      0.04    -0.02     0.13 1.00     4038     4708
+
+Further Distributional Parameters:
+      Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+sigma     0.34      0.00     0.34     0.35 1.00    10271     6187
+
+Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
+and Tail_ESS are effective sample size measures, and Rhat is the potential
+scale reduction factor on split chains (at convergence, Rhat = 1).
+```
+
+Here there is an effect of word class in the expected direction and the credible interval does not include 0.
