@@ -10,6 +10,3 @@ The data and analysis scripts from the original study are available at: https://
 ## Contents
 - `Reanalysis_Staub_2024.Rmd` – The R Markdown file containing the reanalysis script.
 - `Reanalysis_Staub_2024.html` – The knitted HTML output for easy viewing of results.
-
-## License
-This project is licensed under the [MIT License](LICENSE), allowing for reuse with attribution. See the `LICENSE` file for details.
