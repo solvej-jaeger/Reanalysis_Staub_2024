@@ -3,7 +3,7 @@
 ## Overview
 This repository contains the analysis scripts and results for the reanalysis of The Function/Content Word Distinction and Eye Movements in Reading, a study originally conducted by Adrian Staub. The reanalysis was performed using R and is documented in an R Markdown file.
 
-Staub, A. (2024). The function/content word distinction and eye movements in reading. Journal of Experimental Psychology: Learning, Memory, and Cognition, 50(6), 967–984. https://doi.org/10.1037/xlm0001301
+Original study: Staub, A. (2024). The function/content word distinction and eye movements in reading. Journal of Experimental Psychology: Learning, Memory, and Cognition, 50(6), 967–984. https://doi.org/10.1037/xlm0001301
 
 The data and analysis scripts from the original study are available at: https://osf.io/8f5w7
 
@@ -13,10 +13,3 @@ The data and analysis scripts from the original study are available at: https://
 
 ## License
 This project is licensed under the [MIT License](LICENSE), allowing for reuse with attribution. See the `LICENSE` file for details.
-
-## Citation
-If you use this analysis in your work, please cite:
-[Your Name]. (Year). *Reanalysis of [Study Title]*. GitHub repository: [Repository URL]
-
-## Contact
-For questions or collaborations, feel free to contact [Your Name] at [Your Email] or open an issue on GitHub.
