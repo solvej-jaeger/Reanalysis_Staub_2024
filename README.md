@@ -4,9 +4,8 @@
 This repository contains the analysis scripts and results for the reanalysis of The Function/Content Word Distinction and Eye Movements in Reading, a study originally conducted by Adrian Staub. The reanalysis was performed using R and is documented in an R Markdown file.
 
 ## Contents
-- `reanalysis.Rmd` – The R Markdown file containing the reanalysis script.
-- `reanalysis.html` – The knitted HTML output for easy viewing of results.
-- `data/` (if applicable) – Folder containing relevant datasets (ensure compliance with ethical guidelines).
+- `Reanalysis_Staub_2024.Rmd` – The R Markdown file containing the reanalysis script.
+- `Reanalysis_Staub_2024.html` – The knitted HTML output for easy viewing of results.
 
 ## Usage
 To reproduce the analysis:
@@ -14,7 +13,7 @@ To reproduce the analysis:
    ```bash
    git clone https://github.com/yourusername/repository-name.git
    ```
-2. Open `reanalysis.Rmd` in RStudio.
+2. Open `Reanalysis_Staub_2024.Rmd` in RStudio.
 3. Install required R packages (if not already installed):
    ```r
    install.packages(c("tidyverse", "knitr", "rmarkdown"))
