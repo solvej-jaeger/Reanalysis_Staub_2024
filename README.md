@@ -1,7 +1,7 @@
-# Reanalysis of The Function/Content Word Distinction and Eye Movements in Reading (Staub, 2024)
+# Reanalysis of Staub's (2024) Experiment 1
 
 ## Overview
-This repository contains the analysis scripts and results for the reanalysis of [Study Title], a psycholinguistic study originally conducted by [Original Authors]. The reanalysis was performed using R and is documented in an R Markdown file.
+This repository contains the analysis scripts and results for the reanalysis of [The Function/Content Word Distinction and Eye Movements in Reading], a study originally conducted by [Adrian Staub]. The reanalysis was performed using R and is documented in an R Markdown file.
 
 ## Contents
 - `reanalysis.Rmd` – The R Markdown file containing the reanalysis script.
